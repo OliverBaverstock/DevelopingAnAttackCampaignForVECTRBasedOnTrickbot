@@ -1,0 +1,63 @@
+#include "pch.h"
+#include <Windows.h>
+#include <fstream>
+#include <Lmcons.h>
+using namespace std;
+
+VOID ExportInfo() {
+
+	ofstream sysInfoFile;
+	SYSTEM_INFO sysInfo;
+	TCHAR uName[UNLEN + 1];
+	DWORD uNameLength = UNLEN;
+	SYSTEMTIME local;
+	SYSTEMTIME sys;
+	
+	GetSystemTime(&sys);
+	GetLocalTime(&local);
+	GetSystemInfo(&sysInfo);
+	GetUserName(uName, &uNameLength);
+
+	sysInfoFile.open("C:\\AprilReport\\sysInfo.txt");
+	sysInfoFile << "Num of processors: ";
+	sysInfoFile << sysInfo.dwNumberOfProcessors;
+	sysInfoFile << "\r\n";
+	sysInfoFile << "Processor Type: ";
+	sysInfoFile << sysInfo.dwProcessorType;
+	sysInfoFile << "\r\n";
+	sysInfoFile << "Local Time: ";
+	sysInfoFile << local.wDay; sysInfoFile << "/";
+	sysInfoFile << local.wMonth; sysInfoFile << "/";
+	sysInfoFile << local.wYear; sysInfoFile << "/";
+	sysInfoFile << "  ";
+	sysInfoFile << local.wHour; sysInfoFile << ":";
+	sysInfoFile << local.wMinute; sysInfoFile << ":";
+	sysInfoFile << local.wSecond; sysInfoFile << ":";
+	sysInfoFile << local.wMilliseconds;
+	sysInfoFile << "\r\n";
+	sysInfoFile << "System Time: ";
+	sysInfoFile << sys.wDay; sysInfoFile << "/";
+	sysInfoFile << sys.wMonth; sysInfoFile << "/";
+	sysInfoFile << sys.wYear; sysInfoFile << "/";
+	sysInfoFile << "  ";
+	sysInfoFile << sys.wHour; sysInfoFile << ":";
+	sysInfoFile << sys.wMinute; sysInfoFile << ":";
+	sysInfoFile << sys.wSecond; sysInfoFile << ":";
+	sysInfoFile << sys.wMilliseconds;
+	sysInfoFile << "\r\n";
+	sysInfoFile << "UserName: ";
+	sysInfoFile << uName;
+
+	Sleep(1000);
+	sysInfoFile.close();
+}
+
+BOOL __stdcall DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
+{
+	if (dwReason == DLL_PROCESS_ATTACH) {
+		DisableThreadLibraryCalls(hModule);
+		//execute worker routine
+		CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ExportInfo, NULL, 0, NULL);
+	}
+	return TRUE;
+}

